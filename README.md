@@ -4,7 +4,7 @@ A lightweight, event sourced Account implementation with Kotlin, arrow-kt and pu
 
 ### Theoretically background
 
-The theoretically background can be found on the [blogpost](https://javacaptain.dev/2024/04/24/event-sourcing-with-kotlin/).
+The theoretically background can be found on the [blogpost](https://javacaptain.com/2024/04/event-sourcing-with-kotlin/).
 
 ### Overview
 
