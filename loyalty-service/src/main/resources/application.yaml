@@ -1,0 +1,34 @@
+
+spring:
+#  datasource:
+#    url: ${DB_URL}
+#    username: ${DB_USERNAME}
+#    password: ${DB_PASSWORD}
+#    driver-class-name: org.postgresql.Driver
+#    hikari:
+#      maximum-pool-size: 50
+#  jpa:
+#    hibernate:
+#      ddl-auto: validate
+#  flyway:
+#    enabled: true
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS}
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.ByteArrayDeserializer
+      account-events-topic: "account.events"
+
+
+management:
+  metrics:
+    data:
+      repository:
+        autotime:
+          percentiles-histogram: true
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+server:
+  port: 8081

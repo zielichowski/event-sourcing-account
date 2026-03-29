@@ -3069,9 +3069,10 @@
         },
         "definition": "label_values(jvm_info,application)",
         "hide": 0,
-        "includeAll": false,
+        "includeAll": true,
         "label": "Application",
-        "multi": false,
+        "multi": true,
+        "allValue": ".*",
         "name": "application",
         "options": [],
         "query": {

@@ -4,6 +4,7 @@ services:
     image: 'event-sourcing-account:latest'
     build:
       context: .
+      dockerfile: account-service/Dockerfile
     depends_on:
       - db
     environment:
@@ -11,8 +12,25 @@ services:
       - SPRING_DATASOURCE_USERNAME=compose-postgres
       - SPRING_DATASOURCE_PASSWORD=compose-postgres
       - SPRING_JPA_HIBERNATE_DDL_AUTO=update
+      - KAFKA_BOOTSTRAP_SERVERS=broker1:29092,broker2:29092,broker3:29092
     ports:
-      - 8080:8080
+      - "8080:8080"
+
+  application:
+    image: 'loyalty-service:latest'
+    build:
+      context: .
+      dockerfile: loyalty-service/Dockerfile
+    depends_on:
+      - db
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://db:5432/compose-postgres
+      - SPRING_DATASOURCE_USERNAME=compose-postgres
+      - SPRING_DATASOURCE_PASSWORD=compose-postgres
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=update
+      - KAFKA_BOOTSTRAP_SERVERS=broker1:29092,broker2:29092,broker3:29092
+    ports:
+      - "8081:8081"
 
   db:
     image: 'postgres:16-alpine'
@@ -21,21 +39,24 @@ services:
       - POSTGRES_USER=compose-postgres
       - POSTGRES_PASSWORD=compose-postgres
     ports:
-      - 5432:5432
+      - "5432:5432"
 
   prometheus:
     image: prom/prometheus:v2.51.0
-    command: [ "--web.enable-remote-write-receiver", "--enable-feature=exemplar-storage", "--config.file=/etc/prometheus/prometheus.yml" ]
+    command:
+      - "--web.enable-remote-write-receiver"
+      - "--enable-feature=exemplar-storage"
+      - "--config.file=/etc/prometheus/prometheus.yml"
     ports:
-      - 9090:9090
+      - "9090:9090"
     volumes:
       - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-    mem_limit: 64M
+    mem_limit: 512M
 
   grafana:
     image: grafana/grafana:10.4.1
     ports:
-      - 3000:3000
+      - "3000:3000"
     environment:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
@@ -45,6 +66,197 @@ services:
       - ./infrastructure/grafana/provisioning:/etc/grafana/provisioning/
       - ./infrastructure/grafana/dashboards:/var/lib/grafana/dashboards/
     mem_limit: 64M
+
+  # ────────────────────────────────────────────────
+  # Broker 1 + JMX exporter
+  # ────────────────────────────────────────────────
+  broker1:
+    image: apache/kafka:latest
+    hostname: broker1
+    container_name: broker1
+    ports:
+      - "9092:9092"
+      - "9401:9404"           # JMX exporter metrics exposed here
+    expose:
+      - "9999"                # JMX port (internal)
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://broker1:29092,CONTROLLER://broker1:29093,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker1:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@broker1:29093,2@broker2:29093,3@broker3:29093
+      KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      # ─── Enable JMX ───────────────────────────────────────
+      KAFKA_JMX_OPTS: >-
+        -Dcom.sun.management.jmxremote
+        -Dcom.sun.management.jmxremote.local.only=false
+        -Dcom.sun.management.jmxremote.authenticate=false
+        -Dcom.sun.management.jmxremote.ssl=false
+        -Dcom.sun.management.jmxremote.port=9999
+        -Dcom.sun.management.jmxremote.rmi.port=9999
+        -Djava.rmi.server.hostname=localhost
+
+  broker1-jmx:
+    image: bitnami/jmx-exporter:latest
+    container_name: broker1-jmx
+    depends_on:
+      - broker1
+    command:
+      - "9404"  # ← Add this: the port to listen on
+      - "/opt/bitnami/jmx-exporter/config.yml"  # ← Add this: path to config
+    environment:
+      SERVICE_URL: service:jmx:rmi:///jndi/rmi://localhost:9999/jmxrmi
+      JVM_OPTS: "-Xmx128m"
+    volumes:
+      - ./infrastructure/prometheus/kafka-jmx-config.yml:/opt/bitnami/jmx-exporter/config.yml
+    network_mode: "service:broker1"
+
+
+  # ────────────────────────────────────────────────
+  # Broker 2 + JMX exporter
+  # ────────────────────────────────────────────────
+  broker2:
+    image: apache/kafka:latest
+    hostname: broker2
+    container_name: broker2
+    ports:
+      - "9093:9093"
+      - "9402:9404"           # JMX exporter metrics exposed here
+    expose:
+      - "9999"
+    environment:
+      KAFKA_NODE_ID: 2
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://broker2:29092,CONTROLLER://broker2:29093,PLAINTEXT_HOST://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker2:29092,PLAINTEXT_HOST://localhost:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@broker1:29093,2@broker2:29093,3@broker3:29093
+      KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_JMX_OPTS: >-
+        -Dcom.sun.management.jmxremote
+        -Dcom.sun.management.jmxremote.local.only=false
+        -Dcom.sun.management.jmxremote.authenticate=false
+        -Dcom.sun.management.jmxremote.ssl=false
+        -Dcom.sun.management.jmxremote.port=9999
+        -Dcom.sun.management.jmxremote.rmi.port=9999
+        -Djava.rmi.server.hostname=localhost
+
+  broker2-jmx:
+    image: bitnami/jmx-exporter:latest
+    container_name: broker2-jmx
+    depends_on:
+      - broker2
+    command:
+      - "9404"
+      - "/opt/bitnami/jmx-exporter/config.yml"
+    environment:
+      SERVICE_URL: service:jmx:rmi:///jndi/rmi://localhost:9999/jmxrmi
+      JVM_OPTS: "-Xmx128m"
+    volumes:
+      - ./infrastructure/prometheus/kafka-jmx-config.yml:/opt/bitnami/jmx-exporter/config.yml
+    network_mode: "service:broker2"
+
+
+  # ────────────────────────────────────────────────
+  # Broker 3 + JMX exporter
+  # ────────────────────────────────────────────────
+  broker3:
+    image: apache/kafka:latest
+    hostname: broker3
+    container_name: broker3
+    ports:
+      - "9094:9094"
+      - "9403:9404"           # JMX exporter metrics exposed here
+    expose:
+      - "9999"
+    environment:
+      KAFKA_NODE_ID: 3
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://broker3:29092,CONTROLLER://broker3:29093,PLAINTEXT_HOST://0.0.0.0:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker3:29092,PLAINTEXT_HOST://localhost:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@broker1:29093,2@broker2:29093,3@broker3:29093
+      KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_JMX_OPTS: >-
+        -Dcom.sun.management.jmxremote
+        -Dcom.sun.management.jmxremote.local.only=false
+        -Dcom.sun.management.jmxremote.authenticate=false
+        -Dcom.sun.management.jmxremote.ssl=false
+        -Dcom.sun.management.jmxremote.port=9999
+        -Dcom.sun.management.jmxremote.rmi.port=9999
+        -Djava.rmi.server.hostname=localhost
+
+  broker3-jmx:
+    image: bitnami/jmx-exporter:latest
+    container_name: broker3-jmx
+    depends_on:
+      - broker3
+    command:
+      - "9404"
+      - "/opt/bitnami/jmx-exporter/config.yml"
+    environment:
+      SERVICE_URL: service:jmx:rmi:///jndi/rmi://localhost:9999/jmxrmi
+      JVM_OPTS: "-Xmx128m"
+    volumes:
+      - ./infrastructure/prometheus/kafka-jmx-config.yml:/opt/bitnami/jmx-exporter/config.yml
+    network_mode: "service:broker3"
+
+  topic-creator:
+    image: confluentinc/cp-kafka:latest
+    depends_on:
+      - broker1
+      - broker2
+      - broker3
+    volumes:
+      - ./account-service/src/test/resources/kafka/create-topics.sh:/etc/confluent/docker/ready.d/create-topics.sh
+    command: /bin/sh -c "until kafka-topics --bootstrap-server broker1:29092,broker2:29092,broker3:29092 --list; do sleep 2; done; /etc/confluent/docker/ready.d/create-topics.sh"
+
+  console:
+    container_name: redpanda-console
+    image: docker.redpanda.com/redpandadata/console:v2.7.2
+    volumes:
+      - ./proto:/proto
+    entrypoint: /bin/sh
+    command: -c 'echo "$$CONSOLE_CONFIG_FILE" > /tmp/config.yml; /app/console'
+    environment:
+      CONFIG_FILEPATH: /tmp/config.yml
+      CONSOLE_CONFIG_FILE: |
+        kafka:
+          brokers: ["broker1:29092", "broker2:29092", "broker3:29092"]
+          protobuf:
+            enabled: true
+            mappings:
+              - topicName: account.events
+                valueProtoType: account.v1.AccountEvent
+            fileSystem:
+              enabled: true
+              refreshInterval: 5m
+              paths:
+                - /proto
+    ports:
+      - "8090:8080"
 
 volumes:
   data:

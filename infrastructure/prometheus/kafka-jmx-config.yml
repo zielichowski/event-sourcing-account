@@ -1,0 +1,228 @@
+lowercaseOutputName: true
+lowercaseOutputLabelNames: true
+hostPort: localhost:9999
+
+rules:
+
+  ############################
+  # 1. Broker throughput
+  ############################
+
+  - pattern: kafka.server<type=BrokerTopicMetrics, name=BytesInPerSec><>Count
+    name: kafka_bytes_in_total
+    type: COUNTER
+
+  - pattern: kafka.server<type=BrokerTopicMetrics, name=BytesOutPerSec><>Count
+    name: kafka_bytes_out_total
+    type: COUNTER
+
+  - pattern: kafka.server<type=BrokerTopicMetrics, name=MessagesInPerSec><>Count
+    name: kafka_messages_in_total
+    type: COUNTER
+
+  ############################
+  # 2. Topic-level throughput
+  ############################
+
+  - pattern: kafka.server<type=BrokerTopicMetrics, name=BytesInPerSec, topic=(.+)><>Count
+    name: kafka_topic_bytes_in_total
+    labels:
+      topic: "$1"
+    type: COUNTER
+
+  - pattern: kafka.server<type=BrokerTopicMetrics, name=BytesOutPerSec, topic=(.+)><>Count
+    name: kafka_topic_bytes_out_total
+    labels:
+      topic: "$1"
+    type: COUNTER
+
+  - pattern: kafka.server<type=BrokerTopicMetrics, name=MessagesInPerSec, topic=(.+)><>Count
+    name: kafka_topic_messages_in_total
+    labels:
+      topic: "$1"
+    type: COUNTER
+
+  ############################
+  # 3. Request metrics (CRITICAL)
+  ############################
+
+  - pattern: kafka.network<type=RequestMetrics, name=RequestsPerSec, request=(.+)><>Count
+    name: kafka_requests_total
+    labels:
+      request: "$1"
+    type: COUNTER
+
+  - pattern: kafka.network<type=RequestMetrics, name=TotalTimeMs, request=(.+)><>Mean
+    name: kafka_request_latency_ms
+    labels:
+      request: "$1"
+
+  - pattern: kafka.network<type=RequestMetrics, name=TotalTimeMs, request=(.+)><>99thPercentile
+    name: kafka_request_latency_p99_ms
+    labels:
+      request: "$1"
+
+  ############################
+  # 4. Replication metrics (CRITICAL)
+  ############################
+
+  - pattern: kafka.server<type=ReplicaManager, name=UnderReplicatedPartitions><>Value
+    name: kafka_under_replicated_partitions
+
+  - pattern: kafka.server<type=ReplicaManager, name=PartitionCount><>Value
+    name: kafka_partition_count
+
+  - pattern: kafka.server<type=ReplicaManager, name=LeaderCount><>Value
+    name: kafka_leader_count
+
+  - pattern: kafka.server<type=ReplicaManager, name=OfflineReplicaCount><>Value
+    name: kafka_offline_replicas
+
+  ############################
+  # 5. Controller / KRaft metrics (CRITICAL)
+  ############################
+
+  - pattern: kafka.controller<type=KafkaController, name=ActiveControllerCount><>Value
+    name: kafka_active_controller
+
+  - pattern: kafka.controller<type=ControllerStats, name=LeaderElectionRateAndTimeMs><>Count
+    name: kafka_leader_elections_total
+    type: COUNTER
+
+  ############################
+  # 6. Log / disk metrics
+  ############################
+
+  - pattern: kafka.log<type=Log, name=Size, topic=(.+), partition=(.+)><>Value
+    name: kafka_log_size_bytes
+    labels:
+      topic: "$1"
+      partition: "$2"
+
+  ############################
+  # 7. Network metrics
+  ############################
+
+  - pattern: kafka.network<type=SocketServer, name=NetworkProcessorAvgIdlePercent><>Value
+    name: kafka_network_idle_percent
+
+  - pattern: kafka.network<type=SocketServer, name=RequestQueueSize><>Value
+    name: kafka_request_queue_size
+
+  ############################
+  # 8. JVM metrics (CRITICAL)
+  ############################
+
+  - pattern: java.lang<type=Memory><HeapMemoryUsage>used
+    name: kafka_jvm_heap_used_bytes
+
+  - pattern: java.lang<type=Memory><HeapMemoryUsage>max
+    name: kafka_jvm_heap_max_bytes
+
+  - pattern: java.lang<type=Threading><ThreadCount>
+    name: kafka_jvm_threads
+
+  - pattern: java.lang<type=GarbageCollector, name=(.+)><>CollectionCount
+    name: kafka_jvm_gc_total
+    labels:
+      gc: "$1"
+    type: COUNTER
+
+  ############################
+  # 9. Request handler metrics
+  ############################
+
+  - pattern: kafka.server<type=KafkaRequestHandlerPool, name=RequestHandlerAvgIdlePercent><>Value
+    name: kafka_request_handler_idle_percent
+
+  ############################
+  # 10. KRaft-specific metrics (VERY important)
+  ############################
+
+  - pattern: kafka.raft<type=KafkaRaftMetrics, name=CurrentLeader><>Value
+    name: kafka_raft_current_leader
+
+  - pattern: kafka.raft<type=KafkaRaftMetrics, name=CurrentEpoch><>Value
+    name: kafka_raft_epoch
+
+  - pattern: kafka.raft<type=KafkaRaftMetrics, name=HighWatermark><>Value
+    name: kafka_raft_high_watermark
+  # ==========================================
+  # BROKER REQUEST LATENCY (CORRECT VERSION)
+  # ==========================================
+
+  - pattern: kafka.network<type=RequestMetrics, request=(.+), name=TotalTimeMs><>Mean
+    name: kafka_request_latency_mean_ms
+    labels:
+      request: "$1"
+
+  - pattern: kafka.network<type=RequestMetrics, request=(.+), name=TotalTimeMs><>50thPercentile
+    name: kafka_request_latency_p50_ms
+    labels:
+      request: "$1"
+
+  - pattern: kafka.network<type=RequestMetrics, request=(.+), name=TotalTimeMs><>95thPercentile
+    name: kafka_request_latency_p95_ms
+    labels:
+      request: "$1"
+
+  - pattern: kafka.network<type=RequestMetrics, request=(.+), name=TotalTimeMs><>99thPercentile
+    name: kafka_request_latency_p99_ms
+    labels:
+      request: "$1"
+
+
+  # ==========================================
+  # BROKER REQUEST QUEUE TIME
+  # ==========================================
+
+  - pattern: kafka.network<type=RequestMetrics, request=(.+), name=RequestQueueTimeMs><>Mean
+    name: kafka_request_queue_time_mean_ms
+    labels:
+      request: "$1"
+
+  - pattern: kafka.network<type=RequestMetrics, request=(.+), name=RequestQueueTimeMs><>95thPercentile
+    name: kafka_request_queue_time_p95_ms
+    labels:
+      request: "$1"
+
+
+  # ==========================================
+  # REQUEST RATE
+  # ==========================================
+
+  - pattern: kafka.network<type=RequestMetrics, request=(.+), name=RequestsPerSec><>Count
+    name: kafka_request_rate_total
+    type: COUNTER
+    labels:
+      request: "$1"
+
+  # ================================
+  # REPLICATION HEALTH
+  # ================================
+
+  - pattern: kafka.server<type=ReplicaManager, name=UnderReplicatedPartitions><>Value
+    name: kafka_under_replicated_partitions
+
+  - pattern: kafka.server<type=ReplicaManager, name=OfflineReplicaCount><>Value
+    name: kafka_offline_replicas
+
+  - pattern: kafka.server<type=ReplicaManager, name=PartitionCount><>Value
+    name: kafka_partition_count
+
+  - pattern: kafka.server<type=ReplicaManager, name=LeaderCount><>Value
+    name: kafka_leader_count
+
+
+  # ================================
+  # CONTROLLER HEALTH
+  # ================================
+
+  - pattern: kafka.controller<type=KafkaController, name=ActiveControllerCount><>Value
+    name: kafka_active_controller_count
+
+  - pattern: kafka.controller<type=KafkaController, name=OfflinePartitionsCount><>Value
+    name: kafka_offline_partitions_count
+
+  - pattern: kafka.controller<type=KafkaController, name=PreferredReplicaImbalanceCount><>Value
+    name: kafka_preferred_replica_imbalance

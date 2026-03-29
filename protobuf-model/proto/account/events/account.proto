@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package account.v1;
+
+// =======================
+// Event envelope
+// =======================
+
+message AccountEvent {
+  oneof event {
+    AccountOpened account_opened = 1;
+    MoneyDeposited money_deposited = 2;
+    MoneyWithdrawn money_withdrawn = 3;
+  }
+}
+
+// =======================
+// Events
+// =======================
+
+message AccountOpened {
+  string account_id = 1;        // UUID
+  string transaction_id = 2;    // UUID
+  int64 version = 3;
+
+  string owner_id = 4;          // UUID
+  int64 initial_balance = 5;    // Money
+}
+
+message MoneyDeposited {
+  string account_id = 1;        // UUID
+  string transaction_id = 2;    // UUID
+  int64 version = 3;
+
+  int64 amount_deposited = 4;   // Money
+  int64 balance = 5;            // Money
+}
+
+message MoneyWithdrawn {
+  string account_id = 1;        // UUID
+  string transaction_id = 2;    // UUID
+  int64 version = 3;
+
+  int64 amount_withdrawn = 4;   // Money
+  int64 balance = 5;            // Money
+}
